@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AegisEMR Break-Glass Triage Prototype</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+:root{--bg:#f4f6f8;--cd:#fff;--tx:#14181f;--mu:#5b6472;--bd:#d9dee5;--ac:#0b6e6e;--ab:#e3f3f3;--rd:#c62828;--rb:#fdeaea;--ok:#1b7f3b;--wn:#b26a00;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1318;--cd:#181e26;--tx:#e8ecf1;--mu:#9aa5b4;--bd:#2a323d;--ac:#3cc0c0;--ab:#12302f;--rd:#ff7b7b;--rb:#3a1a1a;--ok:#4cc477;--wn:#e0a040;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1318;--cd:#181e26;--tx:#e8ecf1;--mu:#9aa5b4;--bd:#2a323d;--ac:#3cc0c0;--ab:#12302f;--rd:#ff7b7b;--rb:#3a1a1a;--ok:#4cc477;--wn:#e0a040;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{padding:12px 16px 0;max-width:980px;margin:auto}h1{font-size:18px;margin:0 0 8px}h1 small{color:var(--mu);font-weight:400}
+nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
+nav button{background:var(--cd);color:var(--tx);border:1px solid var(--bd);padding:8px 12px;border-radius:8px;cursor:pointer}
+nav button.on{background:var(--ac);color:var(--bg);border-color:var(--ac);font-weight:600}
+main{max-width:980px;margin:auto;padding:8px 16px 40px}
+.card{background:var(--cd);border:1px solid var(--bd);border-radius:12px;padding:14px;margin:10px 0}
+h2{font-size:16px;margin:0 0 8px}.mu{color:var(--mu);font-size:13px}.ok{color:var(--ok)}.bad{color:var(--rd)}
+button.b,button.g{background:var(--ac);color:var(--bg);border:0;padding:9px 14px;border-radius:8px;cursor:pointer;font-weight:600;margin:3px 4px 3px 0}
+button.g{background:transparent;color:var(--ac);border:1px solid var(--ac)}button.d{background:var(--rd);color:#fff;border:0;padding:9px 14px;border-radius:8px;cursor:pointer;font-weight:600}
+button:disabled{opacity:.4;cursor:not-allowed}
+label{display:block;font-size:13px;color:var(--mu);margin:6px 0}
+input,select,textarea{width:100%;max-width:420px;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit;display:block;margin-top:3px}
+input[type=checkbox]{width:auto;display:inline;margin-right:6px}
+.msg{padding:10px 12px;border-radius:8px;margin:10px 0;background:var(--ab);border:1px solid var(--ac)}.msg.e{background:var(--rb);border-color:var(--rd)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.gh{border:3px solid var(--rd);border-radius:12px;padding:12px;background:var(--rb)}
+.gh .f{margin:8px 0}.gh .k{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mu)}.gh .v{font-size:20px;font-weight:700}
+.pill{display:inline-block;background:var(--rd);color:#fff;border-radius:6px;padding:3px 10px;font-size:18px;font-weight:700}
+.tw{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:12.5px}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--bd);white-space:nowrap}
+code,pre{font:12px ui-monospace,Menlo,monospace}pre{background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:10px;overflow:auto;max-height:260px}
+.timer{font:700 20px ui-monospace,monospace}
+@media print{nav,header,.np{display:none!important}body{background:#fff;color:#000}}
+</style></head><body>
+<header><h1>AegisEMR <small>Dual-Tap Break-Glass Triage · interactive prototype (all data synthetic, runs in your browser)</small></h1>
+<nav id="nav"></nav></header><main id="app"></main>
+<script>
+"use strict";
+const $=s=>document.querySelector(s),te=new TextEncoder(),App=$("#app");
+const hex=b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");
+const sha=async s=>hex(await crypto.subtle.digest("SHA-256",te.encode(s)));
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let hk,ak;
+const hmac=async s=>{hk=hk||await crypto.subtle.importKey("raw",te.encode("demo-hmac-secret"),{name:"HMAC",hash:"SHA-256"},false,["sign"]);return hex(await crypto.subtle.sign("HMAC",hk,te.encode(s)))};
+const aes={async enc(o){ak=ak||await crypto.subtle.generateKey({name:"AES-GCM",length:256},false,["encrypt","decrypt"]);const iv=crypto.getRandomValues(new Uint8Array(12));return{iv,ct:await crypto.subtle.encrypt({name:"AES-GCM",iv},ak,te.encode(JSON.stringify(o)))}},
+async dec(r){return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:"AES-GCM",iv:r.iv},ak,r.ct)))}};
+
+/* ---- config/systemCalibration (editable on the Calibration route) ---- */
+const cfg={ORGANIZATION_MODE:"WORKPLACE",RESPONDER_SESSION_TIMEOUT_SECONDS:300,SHIFT_PIN_VALIDITY_HOURS:8,DYNAMIC_QR_REFRESH_SECONDS:30,BREAK_GLASS_RATE_LIMIT_MAX_SCANS:3,RATE_LIMIT_WINDOW_MINUTES:5,NOTIFY_FAMILY_ON_SCAN:true,REQUIRE_WITNESS_ID_ON_CLOSURE:false,GOLDEN_HOUR_VISIBLE_FIELDS:["full_name","blood_type","severe_allergies","chronic_conditions","active_medications","emergency_contacts","hmo_philhealth"]};
+const NM={full_name:"Full name",blood_type:"Blood type",severe_allergies:"Severe allergies",chronic_conditions:"Chronic conditions",active_medications:"Active medications",emergency_contacts:"Emergency contact",hmo_philhealth:"HMO / PhilHealth"};
+const KY={full_name:"fullName",blood_type:"blood",severe_allergies:"allergies",chronic_conditions:"conditions",active_medications:"meds",emergency_contacts:"contact",hmo_philhealth:"hmo"};
+const lab=()=>cfg.ORGANIZATION_MODE==="SCHOOL"?{p:"Student",w:"Teacher",c:"Clinic"}:{p:"Employee",w:"Team Leader",c:"Occupational Health"};
+
+/* ---- state ---- */
+const U=[{id:"ID-1001",ver:1,p:{fullName:"Maria Clara Santos",blood:"O+",allergies:"Penicillin (anaphylaxis), shellfish",conditions:"Type 1 diabetes",meds:"Insulin glargine 18 units nightly",contact:"Rosario Santos (mother) +63 917 555 0142",hmo:"PhilHealth PH-0000-1111-2222"}},
+{id:"ID-1002",ver:1,p:{fullName:"Jose Ramon Dela Cruz",blood:"A−",allergies:"Bee sting (anaphylaxis)",conditions:"Asthma",meds:"Salbutamol inhaler as needed",contact:"Ramon Dela Cruz (father) +63 918 555 0177",hmo:"Maxicare MX-445-2210"}},
+{id:"ID-1003",ver:1,p:{fullName:"Angelica Reyes",blood:"B+",allergies:"Latex (severe)",conditions:"Epilepsy",meds:"Levetiracetam 500 mg twice daily",contact:"Liza Reyes (sister) +63 927 555 0123",hmo:"PhilHealth PH-0000-3333-4444"}}];
+const L=[],alerts=[],notices=[];
+const S={resp:"Nurse Liza Mendoza (Head Nurse)",badgeSuspended:false,shiftUntil:0,end:0,victim:null,scans:[],v:{},receipt:null,msg:null,patient:"ID-1001",exp:false};
+let route=(location.hash||"#triage").slice(1),tamperOrig=null;
+const ST=u=>"AEGIS."+u.id+".v";
+const sTok=async(u,v)=>ST(u)+v+"."+(await hmac("S"+u.id+v)).slice(0,16);
+const win=()=>Math.floor(Date.now()/(cfg.DYNAMIC_QR_REFRESH_SECONDS*1000));
+const dTok=async(u,w)=>"AEGIS-D."+u.id+"."+w+"."+(await hmac("D"+u.id+w)).slice(0,12);
+const G="0".repeat(64);
+async function log(action,victim,reason,resp){resp=resp||S.resp;const ts=new Date().toISOString(),prev=L.length?L[L.length-1].hash:G;const e={seq:L.length+1,ts,resp,victim:victim||"-",action,reason:reason||"-",prev};e.hash=await sha(prev+resp+e.victim+ts+action+e.reason);L.push(e);return e}
+async function verifyChain(){let prev=G;for(const e of L){if(e.prev!==prev||await sha(e.prev+e.resp+e.victim+e.ts+e.action+e.reason)!==e.hash)return e.seq;prev=e.hash}return 0}
+const live=()=>S.end&&Date.now()<S.end;
+const shiftOK=()=>Date.now()<S.shiftUntil;
+const manila=d=>new Date(d).toLocaleString("en-PH",{timeZone:"Asia/Manila",hour12:false})+" (UTC+8)";
+const msg=(t,e)=>S.msg={t,e};
+
+async function checkToken(tok){
+ const p=tok.split("."),u=U.find(x=>x.id===p[1]);if(!u)return{why:"Unknown ID"};if(u.active===false)return{why:"Account deactivated by IT/HR"};
+ if(p[0]==="AEGIS"){const v=+p[2].slice(1);if((await hmac("S"+u.id+v)).slice(0,16)!==p[3])return{why:"Tampered token: HMAC mismatch"};if(v!==u.ver)return{why:"Revoked token (card was regenerated)"};return{u}}
+ const w=+p[2];if((await hmac("D"+u.id+w)).slice(0,12)!==p[3])return{why:"Tampered token: HMAC mismatch"};
+ if(Math.abs(win()-w)>1)return{why:"Expired dynamic QR (outside TOTP window)"};return{u}}
+
+async function act(a,el){
+ if(a==="tap"||a==="nfc"){
+  if(S.badgeSuspended){await log("BADGE_SUSPENDED_TAP",null,"Suspended badge tapped");msg("Badge is suspended by IT Security. Access denied.",1);return}
+  if(!shiftOK()){const pin=($("#pin")||{}).value;if(pin!=="1234"){await log("SHIFT_PIN_FAIL",null,"Wrong PIN");msg("Wrong shift PIN (demo PIN is 1234).",1);return}S.shiftUntil=Date.now()+cfg.SHIFT_PIN_VALIDITY_HOURS*36e5}
+  S.end=Date.now()+cfg.RESPONDER_SESSION_TIMEOUT_SECONDS*1000;S.victim=null;S.receipt=null;await log("RESPONDER_SESSION_START",null,"NFC tap + shift PIN");msg("Emergency session unlocked.")}
+ if(a==="webnfc"){if(!("NDEFReader" in window)){msg("Web NFC is not supported in this browser. Use the simulated tap.",1)}else{try{await new NDEFReader().scan();msg("Hold the badge to the reader…")}catch(e){msg("NFC permission denied.",1)}}}
+ if(a==="scan"){const id=$("#pt").value,k=$("#sc").value,u=U.find(x=>x.id===id),now=Date.now();
+  S.scans=S.scans.filter(t=>now-t<cfg.RATE_LIMIT_WINDOW_MINUTES*6e4);S.scans.push(now);
+  if(S.scans.length>cfg.BREAK_GLASS_RATE_LIMIT_MAX_SCANS){alerts.unshift({ts:now,t:"Rate limit exceeded: "+S.scans.length+" scans in "+cfg.RATE_LIMIT_WINDOW_MINUTES+" min by "+S.resp});await log("RATE_LIMIT_ANOMALY",id,"IT Security alert raised")}
+  const tok=k==="dyn"?await dTok(u,win()):k==="sta"?await sTok(u,u.ver):k==="old"?await dTok(u,win()-5):k==="rev"?await sTok(u,u.ver-1):(await sTok(u,u.ver)).slice(0,-1)+"0";
+  const r=await checkToken(tok);
+  if(!r.u){S.victim=null;await log("SCAN_REJECTED",id,r.why);msg("Rejected: "+r.why+". Security warning logged.",1)}
+  else{S.victim=r.u;S.receipt=null;S.v={};await log("BREAK_GLASS_VIEW",id,"QR verified ("+k+")");if(cfg.NOTIFY_FAMILY_ON_SCAN)notices.unshift("SMS/email queued to "+(await aes.dec(r.u.vault)).contact);msg("Token verified. Golden Hour record unlocked.")}}
+ if(a==="manual"){const r=$("#mr").value.trim(),u=U.find(x=>x.id===$("#pt").value);if(r.length<8){msg("Manual lookup needs a reason of at least 8 characters.",1);return}S.victim=u;S.receipt=null;S.v={};await log("BREAK_GLASS_VIEW_MANUAL",u.id,r);if(cfg.NOTIFY_FAMILY_ON_SCAN)notices.unshift("SMS/email queued to "+(await aes.dec(u.vault)).contact);msg("Manual access logged with reason.")}
+ if(a==="close"){const v=S.v;if(cfg.REQUIRE_WITNESS_ID_ON_CLOSURE&&!(v.wit||"").trim()){msg("Witness ID is required to close this incident.",1);return}
+  const p=await aes.dec(S.victim.vault),ref="INC-"+Date.now().toString(36).toUpperCase(),ob=(c,n,val,u)=>val?{resourceType:"Observation",status:"final",code:{coding:[{system:"http://loinc.org",code:c,display:n}]},valueQuantity:{value:+val,unit:u}}:null;
+  const fhir={resourceType:"Bundle",type:"collection",id:ref,entry:[{resource:{resourceType:"Patient",id:S.victim.id,name:[{text:p.fullName}]}},{resource:{resourceType:"Encounter",status:"finished",class:{code:"EMER"},type:[{text:v.cat||"Medical"}]}},ob("85354-9","Blood pressure systolic",(v.bp||"").split("/")[0],"mm[Hg]"),ob("8867-4","Heart rate",v.hr,"/min"),ob("59408-5","SpO2",v.spo,"%"),ob("2339-0","Glucose",v.glu,"mg/dL")].filter(Boolean).map(x=>x.resource?x:{resource:x})};
+  const e=await log("INCIDENT_CLOSED",S.victim.id,ref+" | "+(v.cat||"Medical")+" | witness "+((v.wit||"").trim()||"none"));
+  S.receipt={ref,ts:e.ts,hash:e.hash,p,v:{...v},fhir};msg("Incident closed. Handoff and receipt generated.")}
+ if(a==="rev"){const u=U.find(x=>x.id===S.patient);u.ver++;await log("TOKEN_REVOKED",u.id,"Patient revoked and regenerated ID token","Self ("+u.id+")");msg("Old static QR revoked. New ID token issued.")}
+ if(a==="save"){const u=U.find(x=>x.id===S.patient),p=await aes.dec(u.vault);p.allergies=$("#ea").value;p.conditions=$("#ec").value;p.meds=$("#em").value;u.vault=await aes.enc(p);await log("PROFILE_EDIT",u.id,"Patient edited own profile","Self ("+u.id+")");msg("Profile encrypted (AES-256-GCM) and saved.")}
+ if(a==="verify"){const b=await verifyChain();S.vr=b?"INTEGRITY FAILURE at entry #"+b+". The ledger was altered.":"All "+L.length+" hashes recomputed. Ledger intact.";S.vbad=!!b;await log("LEDGER_VERIFIED",null,b?"FAILED at #"+b:"OK","IT Security Admin")}
+ if(a==="tamper"){if(tamperOrig){L[1].reason=tamperOrig;tamperOrig=null}else{tamperOrig=L[1].reason;L[1].reason="edited after the fact"}}
+ if(a==="susp"){S.badgeSuspended=!S.badgeSuspended;await log(S.badgeSuspended?"BADGE_SUSPENDED":"BADGE_RESTORED",null,"NFC badge of "+S.resp,"IT Security Admin")}
+ if(a==="add"){const g=i=>$("#"+i).value.trim(),n=g("h_name");if(!n){msg("Full name is required.",1);return}
+ const id="ID-"+(1001+U.length),p={fullName:n,blood:g("h_bt")||"Unknown",allergies:g("h_al")||"None known",conditions:g("h_co")||"None known",meds:g("h_me")||"None",contact:g("h_ct")||"Not provided",hmo:g("h_hm")||"Not provided"};
+ U.push({id,ver:1,name:n,role:g("h_role")||$("#h_role").value,active:true,vault:await aes.enc(p)});await log("USER_ONBOARDED",id,"Added "+$("#h_role").value+": "+n,"IT/HR Admin");msg(n+" added as "+id+". Open Patient Profile to see their QR codes.")}
+ if(a==="tog"){const u=U.find(x=>x.id===el.dataset.id);u.active=u.active===false;await log(u.active?"USER_REACTIVATED":"USER_DEACTIVATED",u.id,u.name,"IT/HR Admin")}
+ if(a==="hrrev"){const u=U.find(x=>x.id===el.dataset.id);u.ver++;await log("TOKEN_REVOKED",u.id,"IT revoked ID token (lost or stolen)","IT/HR Admin");msg("Token revoked for "+u.name+". New token issued.")}
+ if(a==="cal"){cfg.ORGANIZATION_MODE=$("#c_mode").value;for(const k of ["RESPONDER_SESSION_TIMEOUT_SECONDS","SHIFT_PIN_VALIDITY_HOURS","DYNAMIC_QR_REFRESH_SECONDS","BREAK_GLASS_RATE_LIMIT_MAX_SCANS","RATE_LIMIT_WINDOW_MINUTES"])cfg[k]=Math.max(1,+$("#c_"+k).value||cfg[k]);
+  cfg.NOTIFY_FAMILY_ON_SCAN=$("#c_nf").checked;cfg.REQUIRE_WITNESS_ID_ON_CLOSURE=$("#c_wi").checked;cfg.GOLDEN_HOUR_VISIBLE_FIELDS=Object.keys(NM).filter(k=>$("#f_"+k).checked);msg("Calibration applied live.")}}
+
+function vals(){document.querySelectorAll("[data-v]").forEach(i=>S.v[i.dataset.v]=i.value)}
+const opts=(sel)=>U.map(u=>`<option value="${u.id}"${u.id===sel?" selected":""}>${u.id} · ${esc(u.name)}</option>`).join("");
+
+async function render(){
+ document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on",b.dataset.r===route));
+ const m=S.msg?`<div class="msg${S.msg.e?" e":""}">${esc(S.msg.t)}</div>`:"";S.msg=null;
+ App.innerHTML=m+await ({triage:vTriage,patient:vPatient,hr:vHR,ledger:vLedger,calibration:vCal}[route]||vTriage)();
+ drawQR()}
+
+async function vTriage(){const l=lab(),lv=live();let h=`<div class="card"><h2>Step 1 · Shift unlock and responder tap</h2><p class="mu">Responder: ${esc(S.resp)} (${l.c}). ${S.badgeSuspended?'<b class="bad">Badge suspended</b>':""}</p>`;
+ h+=shiftOK()?`<p class="ok">Shift PIN paired until ${manila(S.shiftUntil)}</p>`:`<label>Shift PIN (demo: 1234)<input id="pin" maxlength="4" inputmode="numeric" autocomplete="off"></label>`;
+ h+=`<button class="b" data-a="tap">Simulate Head Nurse NFC Tap</button><button class="g" data-a="webnfc">Use Web NFC</button>`;
+ h+=lv?` <span class="timer" id="cd"></span> <span class="mu">until auto-lock</span>`:`<p class="mu">No active emergency session.</p>`;h+=`</div>`;
+ h+=`<div class="card"><h2>Step 2 · Victim QR scan</h2>`;
+ if(!lv)h+=`<p class="mu">Locked. Tap your badge first.</p>`;else{
+  h+=`<p class="mu">Camera scanning needs real hardware, so pick the token the camera would read:</p><div class="grid"><label>${l.p}<select id="pt">${opts(S.victim?S.victim.id:"ID-1001")}</select></label><label>Scanned QR<select id="sc"><option value="dyn">Valid dynamic QR (TOTP)</option><option value="sta">Valid static ID QR</option><option value="old">Expired dynamic QR</option><option value="rev">Revoked static QR (old card)</option><option value="tam">Tampered QR</option></select></label></div><button class="b" data-a="scan">Scan QR</button>
+  <label>Manual ID fallback: mandatory reason<input id="mr" placeholder="e.g. Unconscious, phone dead, no QR available"></label><button class="g" data-a="manual">Manual lookup (logged)</button>`}
+ h+=`</div>`;
+ if(lv&&S.victim){const p=await aes.dec(S.victim.vault);h+=`<div class="card"><h2>Step 3 · Golden Hour critical screen</h2><div class="gh">`;
+  for(const k of cfg.GOLDEN_HOUR_VISIBLE_FIELDS){const v=p[KY[k]],red=k==="severe_allergies"||k==="chronic_conditions";
+   h+=`<div class="f"><div class="k">${NM[k]}</div>`+(k==="emergency_contacts"?`<div class="v">${esc(v)}</div><a href="tel:${(v.match(/\+[\d ]+/)||[""])[0].replace(/ /g,"")}"><button class="b np">Call emergency contact</button></a>`:red?`<span class="pill">${esc(v)}</span>`:`<div class="v">${esc(v)}</div>`)+`</div>`}
+  h+=`</div>${notices.length?`<p class="mu">Notification: ${esc(notices[0])}</p>`:""}</div>`;
+  const v=S.v;h+=`<div class="card"><h2>Step 4 · On-scene vitals and FHIR endorsement</h2><div class="grid">
+  <label>BP (mmHg)<input data-v="bp" placeholder="120/80" value="${esc(v.bp||"")}"></label><label>Heart rate (bpm)<input data-v="hr" inputmode="numeric" value="${esc(v.hr||"")}"></label><label>SpO2 (%)<input data-v="spo" inputmode="numeric" value="${esc(v.spo||"")}"></label><label>Blood sugar (mg/dL)<input data-v="glu" inputmode="numeric" value="${esc(v.glu||"")}"></label>
+  <label>Incident category<select data-v="cat">${["Medical","Seizure","Allergic reaction","Injury","Cardiac"].map(c=>`<option${v.cat===c?" selected":""}>${c}</option>`).join("")}</select></label>
+  <label>Witness ${l.p} ID (${l.w})${cfg.REQUIRE_WITNESS_ID_ON_CLOSURE?" · required":" · optional"}<input data-v="wit" value="${esc(v.wit||"")}"></label></div><button class="b" data-a="close">Close incident and generate handoff</button></div>`}
+ if(S.receipt){const r=S.receipt;h+=`<div class="card" id="rc"><h2>Official Emergency Access Receipt</h2><p>Reference <b>${r.ref}</b><br>Time: ${manila(r.ts)}<br>Terminal: ${l.c} Station 01<br>Responder: ${esc(S.resp)}<br>${l.p}: ${esc(r.p.fullName)}<br>Witness ID: ${esc((r.v.wit||"").trim()||"none")}<br>Vitals: BP ${esc(r.v.bp||"-")} · HR ${esc(r.v.hr||"-")} · SpO2 ${esc(r.v.spo||"-")} · glucose ${esc(r.v.glu||"-")}<br>SHA-256 log hash: <code>${r.hash}</code></p><p class="mu">Issued under RA 10173 Section 13(c) for emergency processing. Copies go to the responder and to the ${l.p}/HR.</p><button class="g np" onclick="try{print()}catch(e){}">Print one-page ER handoff / save PDF</button><h2>HL7 FHIR R4 payload</h2><pre>${esc(JSON.stringify(r.fhir,null,1))}</pre></div>`}
+ return h}
+
+async function vPatient(){const u=U.find(x=>x.id===S.patient),p=await aes.dec(u.vault),l=lab();
+ const hist=L.filter(e=>e.victim===u.id).slice().reverse();
+ return `<div class="card"><label>Signed in as ${l.p}<select id="who">${opts(S.patient)}</select></label></div>
+ <div class="grid"><div class="card"><h2>Dynamic QR (rotates every ${cfg.DYNAMIC_QR_REFRESH_SECONDS}s)</h2><div id="qd"></div><p class="mu">Refreshes in <span id="pc"></span>s</p></div>
+ <div class="card"><h2>Static printable ID QR (v${u.ver})</h2><div id="qs"></div><p class="mu">Lost your card?</p><button class="d" data-a="rev">Revoke and Regenerate ID Token</button></div></div>
+ <div class="card"><h2>My Golden Hour medical profile</h2><p class="mu">${esc(p.fullName)} · ${esc(p.blood)} · ${esc(p.hmo)}</p><label>Severe allergies<input id="ea" value="${esc(p.allergies)}"></label><label>Chronic conditions<input id="ec" value="${esc(p.conditions)}"></label><label>Active medications<input id="em" value="${esc(p.meds)}"></label><button class="b" data-a="save">Save (encrypted)</button></div>
+ <div class="card"><h2>Privacy access history</h2><div class="tw"><table><tr><th>When (UTC+8)</th><th>Who</th><th>Action</th><th>Reason</th></tr>${hist.map(e=>`<tr><td>${manila(e.ts)}</td><td>${esc(e.resp)}</td><td>${e.action}</td><td>${esc(e.reason)}</td></tr>`).join("")||'<tr><td colspan="4" class="mu">No access yet.</td></tr>'}</table></div></div>`}
+
+async function vHR(){const l=lab(),f=(i,t,ph)=>`<label>${t}<input id="${i}" placeholder="${ph||""}"></label>`;
+ return `<div class="card"><h2>Onboard a person</h2><p class="mu">Creates the record, encrypts the medical profile (AES-256-GCM), issues an ID token and writes to the audit ledger.</p><div class="grid">${f("h_name","Full name","e.g. Paolo Villanueva")}<label>Role<select id="h_role"><option>${l.p}</option><option>Authorized Responder</option><option>${l.w} (Observer)</option><option>IT Security / Admin</option></select></label>${f("h_bt","Blood type","O+")}${f("h_al","Severe allergies")}${f("h_co","Chronic conditions")}${f("h_me","Active medications")}${f("h_ct","Emergency contact","Name (relation) +63 9xx xxx xxxx")}${f("h_hm","HMO / PhilHealth")}</div><button class="b" data-a="add">Add person</button></div>
+ <div class="card"><h2>Directory (${U.length})</h2><div class="tw"><table><tr><th>ID</th><th>Name</th><th>Role</th><th>Token</th><th>Status</th><th></th></tr>${U.map(u=>`<tr><td>${u.id}</td><td>${esc(u.name)}</td><td>${esc(u.role||l.p)}</td><td>v${u.ver}</td><td class="${u.active===false?"bad":"ok"}">${u.active===false?"Deactivated":"Active"}</td><td><button class="g" data-a="hrrev" data-id="${u.id}">Revoke token</button><button class="g" data-a="tog" data-id="${u.id}">${u.active===false?"Reactivate":"Deactivate"}</button></td></tr>`).join("")}</table></div></div>`}
+async function vLedger(){return `<div class="card"><h2>Hash-chained audit ledger</h2><p class="mu">current_hash = SHA256(previous_hash + responder + victim + timestamp + action + reason)</p><button class="b" data-a="verify">Verify Ledger Integrity</button><button class="g" data-a="tamper">${tamperOrig?"Restore entry #2":"Simulate tampering with entry #2"}</button><button class="g" data-a="susp">${S.badgeSuspended?"Restore":"Suspend"} nurse NFC badge</button>
+ ${S.vr?`<div class="msg${S.vbad?" e":""}">${S.vr}</div>`:""}<div class="tw"><table><tr><th>#</th><th>Time (UTC+8)</th><th>Action</th><th>Responder</th><th>Victim</th><th>Reason</th><th>Hash</th></tr>${L.map(e=>`<tr><td>${e.seq}</td><td>${manila(e.ts)}</td><td>${e.action}</td><td>${esc(e.resp)}</td><td>${e.victim}</td><td>${esc(e.reason)}</td><td><code>${e.hash.slice(0,12)}…</code></td></tr>`).join("")}</table></div></div>
+ <div class="card"><h2>Security anomaly alerts</h2>${alerts.map(a=>`<p class="bad">⚠ ${manila(a.ts)}: ${esc(a.t)}</p>`).join("")||'<p class="mu">None. Scan more than the limit in the Triage tab to trigger one.</p>'}</div>
+ <div class="card"><details><summary>Export audit report (JSON)</summary><pre>${esc(JSON.stringify(L,null,1))}</pre></details></div>`}
+
+async function vCal(){const n=(k)=>`<label>${k}<input id="c_${k}" type="number" min="1" value="${cfg[k]}"></label>`;
+ return `<div class="card"><h2>System calibration</h2><p class="mu">Mirrors config/systemCalibration.ts. Changes apply immediately to every route.</p><div class="grid"><label>ORGANIZATION_MODE<select id="c_mode"><option${cfg.ORGANIZATION_MODE==="SCHOOL"?" selected":""}>SCHOOL</option><option${cfg.ORGANIZATION_MODE==="WORKPLACE"?" selected":""}>WORKPLACE</option></select></label>
+ ${["RESPONDER_SESSION_TIMEOUT_SECONDS","SHIFT_PIN_VALIDITY_HOURS","DYNAMIC_QR_REFRESH_SECONDS","BREAK_GLASS_RATE_LIMIT_MAX_SCANS","RATE_LIMIT_WINDOW_MINUTES"].map(n).join("")}</div>
+ <label><input type="checkbox" id="c_nf"${cfg.NOTIFY_FAMILY_ON_SCAN?" checked":""}>NOTIFY_FAMILY_ON_SCAN</label><label><input type="checkbox" id="c_wi"${cfg.REQUIRE_WITNESS_ID_ON_CLOSURE?" checked":""}>REQUIRE_WITNESS_ID_ON_CLOSURE</label>
+ <p class="mu">GOLDEN_HOUR_VISIBLE_FIELDS</p>${Object.keys(NM).map(k=>`<label><input type="checkbox" id="f_${k}"${cfg.GOLDEN_HOUR_VISIBLE_FIELDS.includes(k)?" checked":""}>${k}</label>`).join("")}<button class="b" data-a="cal">Apply</button></div>`}
+
+let lastW=0;
+async function drawQR(){if(route!=="patient")return;const u=U.find(x=>x.id===S.patient);lastW=win();
+ for(const[id,t]of[["qd",await dTok(u,win())],["qs",await sTok(u,u.ver)]]){const el=$("#"+id);if(!el)continue;el.innerHTML="";try{new QRCode(el,{text:t,width:130,height:130})}catch(e){el.innerHTML="<code>"+t+"</code>"}}}
+setInterval(async()=>{
+ if(S.end&&Date.now()>=S.end){S.end=0;S.victim=null;await log("SESSION_AUTO_LOCK",null,"Timeout");msg("Session auto-locked after timeout.",1);render();return}
+ const c=$("#cd");if(c){const s=Math.max(0,Math.ceil((S.end-Date.now())/1000));c.textContent=Math.floor(s/60)+":"+String(s%60).padStart(2,"0")}
+ const p=$("#pc");if(p){p.textContent=cfg.DYNAMIC_QR_REFRESH_SECONDS-Math.floor(Date.now()/1000)%cfg.DYNAMIC_QR_REFRESH_SECONDS;if(win()!==lastW)drawQR()}},1000);
+
+document.addEventListener("click",e=>{const b=e.target.closest("[data-a]");if(b){vals();act(b.dataset.a,b).then(render)}const r=e.target.closest("[data-r]");if(r){route=r.dataset.r;location.hash=route;S.vr=null;render()}});
+document.addEventListener("change",e=>{if(e.target.id==="who"){S.patient=e.target.value;render()}if(e.target.dataset&&e.target.dataset.v)vals()});
+document.addEventListener("input",e=>{if(e.target.dataset&&e.target.dataset.v)vals()});
+addEventListener("hashchange",()=>{route=(location.hash||"#triage").slice(1);render()});
+$("#nav").innerHTML=[["triage","Responder Triage"],["patient","Patient Profile"],["hr","IT / HR Dashboard"],["ledger","Admin Audit Ledger"],["calibration","Calibration"]].map(r=>`<button data-r="${r[0]}">${r[1]}</button>`).join("");
+
+(async()=>{for(const u of U){u.name=u.p.fullName;u.vault=await aes.enc(u.p);delete u.p}
+ const t=Date.now()-864e5;await log("RESPONDER_SESSION_START",null,"NFC tap + shift PIN");await log("BREAK_GLASS_VIEW","ID-1002","QR verified (sta)");await log("INCIDENT_CLOSED","ID-1002","INC-SEED | Allergic reaction | witness none");render()})();
+</script></body></html>

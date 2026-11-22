@@ -1,0 +1,12 @@
+:root{--bg:#f4f6f8;--cd:#fff;--tx:#14181f;--mu:#5b6472;--bd:#d9dee5;--ac:#0b6e6e;--rd:#c62828;--rb:#fdeaea;--ok:#1b7f3b;color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1318;--cd:#181e26;--tx:#e8ecf1;--mu:#9aa5b4;--bd:#2a323d;--ac:#3cc0c0;--rd:#ff7b7b;--rb:#3a1a1a;--ok:#4cc477}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,sans-serif}
+nav{display:flex;gap:6px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--bd)}nav a{color:var(--ac);text-decoration:none;padding:6px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--cd)}
+main{max-width:980px;margin:auto;padding:8px 16px 40px}.card{background:var(--cd);border:1px solid var(--bd);border-radius:12px;padding:14px;margin:10px 0}
+h2{font-size:16px;margin:0 0 8px}.mu{color:var(--mu);font-size:13px}.err{color:var(--rd)}.ok{color:var(--ok)}
+button{background:var(--ac);color:var(--bg);border:0;padding:9px 14px;border-radius:8px;font-weight:600;margin:3px 4px 3px 0;cursor:pointer}button.g{background:transparent;color:var(--ac);border:1px solid var(--ac)}button.d{background:var(--rd);color:#fff}
+label{display:block;font-size:13px;color:var(--mu);margin:6px 0}input,select{width:100%;max-width:420px;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit;display:block;margin-top:3px}input[type=checkbox]{width:auto;display:inline;margin-right:6px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.tw{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:12.5px}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.gh{border:3px solid var(--rd);border-radius:12px;padding:12px;background:var(--rb)}.gh .k{font-size:12px;text-transform:uppercase;color:var(--mu)}.gh .v{font-size:20px;font-weight:700;margin-bottom:8px}.pill{background:var(--rd);color:#fff;border-radius:6px;padding:2px 10px}
+pre{background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:10px;overflow:auto;max-height:240px;font-size:12px}#reader{max-width:320px}
+@media print{nav,.np{display:none!important}}

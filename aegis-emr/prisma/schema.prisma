@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PATIENT
+  RESPONDER
+  OBSERVER
+  ADMIN
+}
+enum Status {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+model User {
+  id              String    @id @default(cuid())
+  fullName        String
+  role            Role
+  status          Status    @default(ACTIVE)
+  tokenVersion    Int       @default(1) // bump to revoke the static QR
+  vault           String // AES-256-GCM encrypted Golden Hour profile
+  nfcUid          String?   @unique // responders only
+  pinHash         String? // responders only (HMAC of PIN)
+  shiftValidUntil DateTime?
+  createdAt       DateTime  @default(now())
+}
+
+model AuditLog {
+  seq          Int      @id @default(autoincrement())
+  previousHash String
+  currentHash  String
+  responderId  String
+  victimId     String
+  action       String
+  reason       String
+  createdAt    DateTime @default(now()) @db.Timestamp(3)
+}
+
+model ScanAttempt {
+  id          Int      @id @default(autoincrement())
+  responderId String
+  createdAt   DateTime @default(now())
+
+  @@index([responderId, createdAt])
+}
+
+model AnomalyAlert {
+  id        Int      @id @default(autoincrement())
+  message   String
+  createdAt DateTime @default(now())
+}
+
+model Setting {
+  key   String @id
+  value Json
+}
+
+model Incident {
+  id          String   @id @default(cuid())
+  victimId    String
+  responderId String
+  category    String
+  witnessId   String?
+  vitals      Json
+  fhir        Json
+  logHash     String
+  closedAt    DateTime @default(now())
+}
